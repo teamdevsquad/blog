@@ -1,0 +1,48 @@
+{
+    "extends": [
+        "plugin:vue/base",
+        "airbnb"
+    ],
+    "rules": {
+        "indent": [
+            "error",
+            4
+        ],
+        "func-names": [
+            "error",
+            "never"
+        ],
+        "import/no-extraneous-dependencies": 0,
+        "no-multi-spaces": [
+            "error",
+            {
+                "exceptions": {
+                    "Property": true,
+                    "ImportDeclaration": true,
+                    "VariableDeclarator": true
+                }
+            }
+        ],
+        "comma-dangle": [
+            "error",
+            "always-multiline"
+        ]
+    },
+    "overrides": [
+        {
+            "files": [
+                "*.vue"
+            ],
+            "rules": {
+                "indent": "off",
+                "vue/script-indent": [
+                    "error",
+                    4,
+                    {
+                        "baseIndent": 1
+                    }
+                ]
+            }
+        }
+    ]
+}

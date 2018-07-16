@@ -1,0 +1,163 @@
+version: '3.4'
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+
+volumes:
+  postgres:
+    driver: local
+  adminer:
+    driver: local
+  redis:
+    driver: local
+
+x-variables:
+  # Versions
+  - &php-version PHP_VERSION=7.2
+  - &node-version NODE_VERSION=9.11.2
+  - &yarn-version YARN_VERSION=latest
+  - &chrome-driver-version CHROME_DRIVER_VERSION=2.32
+
+  # Container names
+  - &nginx blog_nginx
+  - &php-fpm blog_php-fpm
+  - &adminer blog_adminer
+  - &postgres blog_postgres
+  - &workspace blog_workspace
+  - &php-worker blog_php-worker
+
+  # Domains
+  - &domain-default DOMAIN_DEFAULT=blog.vcap.me
+  - &domain-adminer DOMAIN_ADMINER=adminer.vcap.me
+
+  # Database
+  - &db-name POSTGRES_DB=devsquad
+  - &db-username POSTGRES_USER=devsquad
+  - &db-password POSTGRES_PASSWORD=secret
+
+  # Misc
+  - &box-name BOX_NAME=docker blog
+
+services:
+
+    workspace:
+      container_name: *workspace
+      build:
+        context: ./docker/config/workspace
+        args:
+          - *chrome-driver-version
+          - *yarn-version
+          - *php-version
+          - *node-version
+          - *box-name
+      volumes:
+        - ./:/var/www:cached
+        - ./docker/config/workspace/.aliases:/home/devsquad/.aliases
+        - ./docker/data/history:/home/devsquad/history
+        - ./docker/data/.ssh:/home/devsquad/.ssh
+      extra_hosts:
+        - "dockerhost:${YOUR_IP_ADDRESS:-172.16.0.100}"
+      tty: true
+      environment:
+        - PHP_IDE_CONFIG=serverName=devsquad-server
+      networks:
+        - frontend
+        - backend
+
+    php-fpm:
+      restart: on-failure
+      container_name: *php-fpm
+      build:
+        context: ./docker/config/php-fpm
+        args:
+          - *php-version
+      volumes:
+        - ./:/var/www:cached
+      expose:
+        - "${XDEBUG_PORT:-9000}"
+      extra_hosts:
+        - "dockerhost:${YOUR_IP_ADDRESS:-172.16.0.100}"
+      environment:
+        - PHP_IDE_CONFIG=serverName=devsquad-server
+      depends_on:
+        - workspace
+      networks:
+        - backend
+
+    php-worker:
+      restart: on-failure
+      container_name: *php-worker
+      build:
+        context: ./docker/config/php-worker
+        args:
+          - *php-version
+      volumes:
+        - ./:/var/www:cached
+        - ./docker/config/php-worker/supervisord.d:/etc/supervisord.d
+      depends_on:
+        - workspace
+      extra_hosts:
+        - "dockerhost:${YOUR_IP_ADDRESS:-172.16.0.100}"
+      networks:
+        - backend
+
+    nginx:
+      restart: on-failure
+      container_name: *nginx
+      build:
+        context: ./docker/config/nginx
+        args:
+          - *domain-default
+          - *domain-adminer
+          - PHP_UPSTREAM_CONTAINER=php-fpm
+          - PHP_UPSTREAM_PORT=${XDEBUG_PORT:-9000}
+      volumes:
+        - ./:/var/www:cached
+        - ./docker/config/nginx/sites:/etc/nginx/sites-available
+        - ./docker/data/nginx:/var/log/nginx
+      ports:
+        - "${HTTP_PORT:-80}:80"
+        - "${HTTPS_PORT:-443}:443"
+      depends_on:
+        - php-fpm
+        - adminer
+      links:
+        - adminer
+      networks:
+        - backend
+        - frontend
+
+    postgres:
+      restart: on-failure
+      container_name: *postgres
+      build: ./docker/config/postgres
+      volumes:
+        - ./docker/data/postgres:/var/lib/postgresql/data
+      ports:
+        - "${POSTGRES_PORT:-5432}:5432"
+      environment:
+        - *db-name
+        - *db-username
+        - *db-password
+      networks:
+        - backend
+
+    adminer:
+      restart: on-failure
+      container_name: *adminer
+      build:
+        context: ./docker/config/adminer
+        args:
+          - *db-name
+          - *db-username
+          - *db-password
+      ports:
+          - "${ADMINER_PORT:-8080}:8080"
+      depends_on:
+        - php-fpm
+      networks:
+        - backend
+        - frontend
